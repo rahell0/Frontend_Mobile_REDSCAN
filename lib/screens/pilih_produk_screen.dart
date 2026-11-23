@@ -1,5 +1,8 @@
+
 import 'package:flutter/material.dart';
+
 import '../widgets/shared.dart';
+import '../services/menu_service.dart';
 
 class ProductPickerScreen extends StatefulWidget {
   final List<Produk> produkAwal;
@@ -15,104 +18,17 @@ class ProductPickerScreen extends StatefulWidget {
 }
 
 class _ProductPickerScreenState extends State<ProductPickerScreen> {
-  final TextEditingController searchController = TextEditingController();
+  final TextEditingController searchController =
+      TextEditingController();
 
   String kategoriAktif = 'Semua';
 
   late List<Produk> pilihan;
 
-  final List<Produk> katalog = [
-    Produk(
-      nama: 'Espresso',
-      kategori: 'Kopi Base',
-      harga: 18000,
-      ikon: Icons.coffee_outlined,
-    ),
-    Produk(
-      nama: 'Americano',
-      kategori: 'Kopi Base',
-      harga: 20000,
-      ikon: Icons.local_cafe_outlined,
-    ),
-    Produk(
-      nama: 'Caffe Latte',
-      kategori: 'Kopi Base',
-      harga: 24000,
-      ikon: Icons.local_cafe_outlined,
-    ),
-    Produk(
-      nama: 'Cappuccino',
-      kategori: 'Kopi Base',
-      harga: 24000,
-      ikon: Icons.coffee_outlined,
-    ),
-    Produk(
-      nama: 'Kopi Susu Gula Aren',
-      kategori: 'Kopi Base',
-      harga: 22000,
-      ikon: Icons.local_cafe_outlined,
-    ),
-    Produk(
-      nama: 'V60 / Pour Over',
-      kategori: 'Kopi Base',
-      harga: 25000,
-      ikon: Icons.coffee_maker_outlined,
-    ),
-    Produk(
-      nama: 'Matcha Latte',
-      kategori: 'Non-Kopi',
-      harga: 25000,
-      ikon: Icons.local_drink_outlined,
-    ),
-    Produk(
-      nama: 'Chocolate',
-      kategori: 'Non-Kopi',
-      harga: 22000,
-      ikon: Icons.local_cafe_outlined,
-    ),
-    Produk(
-      nama: 'Peach Tea',
-      kategori: 'Non-Kopi',
-      harga: 20000,
-      ikon: Icons.emoji_food_beverage_outlined,
-    ),
-    Produk(
-      nama: 'Butter Croissant',
-      kategori: 'Pastry & Camilan',
-      harga: 20000,
-      ikon: Icons.cake_outlined,
-    ),
-    Produk(
-      nama: 'Cinnamon Roll',
-      kategori: 'Pastry & Camilan',
-      harga: 22000,
-      ikon: Icons.bakery_dining_outlined,
-    ),
-    Produk(
-      nama: 'Truffle Fries',
-      kategori: 'Pastry & Camilan',
-      harga: 24000,
-      ikon: Icons.fastfood_outlined,
-    ),
-    Produk(
-      nama: 'Chicken Wings',
-      kategori: 'Pastry & Camilan',
-      harga: 28000,
-      ikon: Icons.restaurant_outlined,
-    ),
-    Produk(
-      nama: 'Club Sandwich',
-      kategori: 'Makanan Utama & Toast',
-      harga: 28000,
-      ikon: Icons.lunch_dining_outlined,
-    ),
-    Produk(
-      nama: 'Nasi Goreng Spesial',
-      kategori: 'Makanan Utama & Toast',
-      harga: 32000,
-      ikon: Icons.rice_bowl_outlined,
-    ),
-  ];
+  List<Produk> katalog = [];
+
+  bool isLoading = true;
+  String? errorMessage;
 
   @override
   void initState() {
@@ -121,6 +37,145 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     pilihan = widget.produkAwal
         .map((produk) => produk.salin())
         .toList();
+
+    ambilMenu();
+  }
+
+  // ============================================================
+  // MENGAMBIL DATA MENU DARI BACKEND
+  // ============================================================
+
+  Future<void> ambilMenu() async {
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
+    try {
+      final dataMenu = await MenuService.getMenu();
+
+      final List<Produk> dataProduk = dataMenu.map((item) {
+        final int id = int.tryParse(
+              item['id']?.toString() ?? '',
+            ) ??
+            0;
+
+        final String nama =
+            item['nama_menu']?.toString() ?? '';
+
+        final String kategori =
+            item['kategori']?.toString() ?? 'Lainnya';
+
+        // MEMBACA HARGA DARI DATABASE
+        final dynamic hargaData = item['harga'];
+
+        int harga = 0;
+
+        if (hargaData is num) {
+          harga = hargaData.round();
+        } else if (hargaData != null) {
+          final String hargaString = hargaData
+              .toString()
+              .trim()
+              .replaceAll('Rp', '')
+              .replaceAll(' ', '');
+
+          // Membaca format DECIMAL MySQL
+          final double? hargaParsed =
+              double.tryParse(hargaString);
+
+          if (hargaParsed != null) {
+            harga = hargaParsed.round();
+          }
+        }
+
+        // MEMBACA GAMBAR DARI DATABASE
+        final String? gambar =
+            MenuService.getImageUrl(item['gambar']);
+
+        return Produk(
+          id: id,
+          nama: nama,
+          kategori: kategori,
+          harga: harga,
+          gambar: gambar,
+          ikon: ikonProduk(kategori),
+        );
+      }).where((produk) {
+        return (produk.id ?? 0) > 0 &&
+            produk.nama.isNotEmpty;
+      }).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        katalog = dataProduk;
+        isLoading = false;
+
+        if (!['Semua', ...daftarKategori]
+            .contains(kategoriAktif)) {
+          kategoriAktif = 'Semua';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+        errorMessage = e.toString();
+      });
+    }
+  }
+
+  // ============================================================
+  // IKON BERDASARKAN KATEGORI
+  // ============================================================
+
+  IconData ikonProduk(String kategori) {
+    final namaKategori = kategori.toLowerCase();
+
+    if (namaKategori.contains('kopi')) {
+      return Icons.local_cafe_outlined;
+    }
+
+    if (namaKategori.contains('teh')) {
+      return Icons.emoji_food_beverage_outlined;
+    }
+
+    if (namaKategori.contains('pastry') ||
+        namaKategori.contains('camilan') ||
+        namaKategori.contains('roti')) {
+      return Icons.cake_outlined;
+    }
+
+    if (namaKategori.contains('makanan') ||
+        namaKategori.contains('mie') ||
+        namaKategori.contains('nasi') ||
+        namaKategori.contains('burger')) {
+      return Icons.restaurant_outlined;
+    }
+
+    if (namaKategori.contains('non kopi') ||
+        namaKategori.contains('non-kopi')) {
+      return Icons.local_drink_outlined;
+    }
+
+    return Icons.fastfood_outlined;
+  }
+
+  // ============================================================
+  // KATEGORI DINAMIS DARI DATABASE
+  // ============================================================
+
+  List<String> get daftarKategori {
+    final kategori = katalog
+        .map((produk) => produk.kategori)
+        .toSet()
+        .toList();
+
+    kategori.sort();
+
+    return kategori;
   }
 
   @override
@@ -128,6 +183,10 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     searchController.dispose();
     super.dispose();
   }
+
+  // ============================================================
+  // FORMAT RUPIAH
+  // ============================================================
 
   String rupiah(int nilai) {
     final angka = nilai.toString();
@@ -146,9 +205,47 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     return 'Rp $hasil';
   }
 
-  int jumlahProduk(String nama) {
+  // ============================================================
+  // MENAMPILKAN GAMBAR MENU
+  // ============================================================
+
+  Widget tampilkanGambar(Produk produk) {
+    if (produk.gambar == null ||
+        produk.gambar!.isEmpty) {
+      return Center(
+        child: Icon(
+          produk.ikon,
+          color: brown,
+          size: 38,
+        ),
+      );
+    }
+
+    return Image.network(
+      produk.gambar!,
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      errorBuilder: (context, error, stackTrace) {
+        return Center(
+          child: Icon(
+            produk.ikon,
+            color: brown,
+            size: 38,
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // JUMLAH PRODUK
+  // ============================================================
+
+  int jumlahProduk(Produk produk) {
     final index = pilihan.indexWhere(
-      (produk) => produk.nama == nama,
+      (item) => item.id == produk.id,
     );
 
     return index < 0 ? 0 : pilihan[index].jumlah;
@@ -163,14 +260,20 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     );
   }
 
+  // ============================================================
+  // MENAMBAHKAN ATAU MENGURANGI PRODUK
+  // ============================================================
+
   void ubahPilihan(Produk produk, int perubahan) {
     setState(() {
       final index = pilihan.indexWhere(
-        (item) => item.nama == produk.nama,
+        (item) => item.id == produk.id,
       );
 
       if (index == -1 && perubahan > 0) {
-        pilihan.add(produk.salin(jumlahBaru: perubahan));
+        pilihan.add(
+          produk.salin(jumlahBaru: perubahan),
+        );
       } else if (index != -1) {
         pilihan[index].jumlah += perubahan;
 
@@ -181,8 +284,21 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     });
   }
 
+  // ============================================================
+  // TAMPILAN HALAMAN
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
+    final lebarLayar = MediaQuery.of(context).size.width;
+
+    // RESPONSIVE GRID
+    final int jumlahKolom = lebarLayar >= 1100
+        ? 4
+        : lebarLayar >= 700
+            ? 3
+            : 2;
+
     final hasilCari = katalog.where((produk) {
       final cocokNama = produk.nama.toLowerCase().contains(
             searchController.text.toLowerCase(),
@@ -194,6 +310,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
       return cocokNama && cocokKategori;
     }).toList();
 
+    // KELOMPOKKAN PRODUK BERDASARKAN KATEGORI
     final Map<String, List<Produk>> kelompok = {};
 
     for (final produk in hasilCari) {
@@ -206,7 +323,10 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // ==================================================
             // HEADER, PENCARIAN, DAN KATEGORI
+            // ==================================================
+
             Container(
               color: const Color(0xFFFAF8F2),
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
@@ -234,10 +354,14 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
                         tooltip: 'Tutup',
                         visualDensity: VisualDensity.compact,
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close, size: 19),
+                        icon: const Icon(
+                          Icons.close,
+                          size: 19,
+                        ),
                       ),
                     ],
                   ),
+
                   TextField(
                     controller: searchController,
                     onChanged: (_) => setState(() {}),
@@ -260,200 +384,338 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 7),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        'Semua',
-                        'Kopi Base',
-                        'Non-Kopi',
-                        'Pastry & Camilan',
-                        'Makanan Utama & Toast',
-                      ].map((kategori) {
-                        final aktif = kategoriAktif == kategori;
 
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 5),
-                          child: ChoiceChip(
-                            label: Text(
-                              kategori,
-                              style: const TextStyle(fontSize: 10),
+                  const SizedBox(height: 7),
+
+                  if (!isLoading && errorMessage == null)
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          'Semua',
+                          ...daftarKategori,
+                        ].map((kategori) {
+                          final aktif =
+                              kategoriAktif == kategori;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 5),
+                            child: ChoiceChip(
+                              label: Text(
+                                kategori,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                ),
+                              ),
+                              selected: aktif,
+                              onSelected: (_) {
+                                setState(() {
+                                  kategoriAktif = kategori;
+                                });
+                              },
+                              selectedColor: teal,
+                              backgroundColor: Colors.white,
+                              labelStyle: TextStyle(
+                                color: aktif
+                                    ? Colors.white
+                                    : brown,
+                              ),
+                              visualDensity:
+                                  VisualDensity.compact,
+                              padding: EdgeInsets.zero,
                             ),
-                            selected: aktif,
-                            onSelected: (_) {
-                              setState(() {
-                                kategoriAktif = kategori;
-                              });
-                            },
-                            selectedColor: teal,
-                            backgroundColor: Colors.white,
-                            labelStyle: TextStyle(
-                              color: aktif ? Colors.white : brown,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
 
+            // ==================================================
             // GRID PRODUK
+            // ==================================================
+
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-                children: [
-                  if (hasilCari.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(30),
+              child: Builder(
+                builder: (context) {
+                  // LOADING
+                  if (isLoading) {
+                    return const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(
+                            color: Colors.white,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Mengambil data menu...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  // ERROR
+                  if (errorMessage != null) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.wifi_off,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Gagal mengambil data menu.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              errorMessage!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 10,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: ambilMenu,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Coba Lagi'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  // KATALOG KOSONG
+                  if (katalog.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'Belum ada produk di database.',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    );
+                  }
+
+                  // PRODUK TIDAK DITEMUKAN
+                  if (hasilCari.isEmpty) {
+                    return const Center(
                       child: Text(
                         'Produk tidak ditemukan.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white),
                       ),
+                    );
+                  }
+
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(
+                      8,
+                      8,
+                      8,
+                      12,
                     ),
-
-                  ...kelompok.entries.map((kelompokProduk) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(2, 8, 2, 9),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.local_cafe,
-                                color: Color(0xFFE9C878),
-                                size: 14,
+                    children: [
+                      ...kelompok.entries.map((kelompokProduk) {
+                        return Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                2,
+                                8,
+                                2,
+                                9,
                               ),
-                              const SizedBox(width: 5),
-                              Expanded(
-                                child: Text(
-                                  kelompokProduk.key.toUpperCase(),
-                                  style: const TextStyle(
-                                    color: Color(0xFFFFE8C4),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '${kelompokProduk.value.length} Menu',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 9,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: kelompokProduk.value.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 7,
-                            mainAxisSpacing: 7,
-                            mainAxisExtent: 178,
-                          ),
-                          itemBuilder: (context, index) {
-                            final produk = kelompokProduk.value[index];
-                            final jumlah = jumlahProduk(produk.nama);
-
-                            return Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: brown,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFF6B4936),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Row(
                                 children: [
+                                  const Icon(
+                                    Icons.local_cafe,
+                                    color: Color(0xFFE9C878),
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 5),
                                   Expanded(
-                                    child: Container(
-                                      width: double.infinity,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(9),
-                                      ),
-                                      child: Icon(
-                                        produk.ikon,
-                                        color: brown,
-                                        size: 29,
+                                    child: Text(
+                                      kelompokProduk.key
+                                          .toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Color(0xFFFFE8C4),
+                                        fontSize: 10,
+                                        fontWeight:
+                                            FontWeight.bold,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
                                   Text(
-                                    produk.nama,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    '${kelompokProduk.value.length} Menu',
                                     style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    rupiah(produk.harga),
-                                    style: const TextStyle(
-                                      color: Color(0xFFFFD783),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 29,
-                                    child: FilledButton(
-                                      onPressed: () {
-                                        ubahPilihan(produk, 1);
-                                      },
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: cream,
-                                        foregroundColor: brown,
-                                        padding: EdgeInsets.zero,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(9),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        jumlah > 0
-                                            ? '+ Pilih ($jumlah)'
-                                            : '+ Pilih',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                                      color: Colors.white70,
+                                      fontSize: 9,
                                     ),
                                   ),
                                 ],
                               ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                    );
-                  }),
-                ],
+                            ),
+
+                            // GRID KARTU PRODUK
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics:
+                                  const NeverScrollableScrollPhysics(),
+                              itemCount:
+                                  kelompokProduk.value.length,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: jumlahKolom,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                mainAxisExtent: 255,
+                              ),
+                              itemBuilder: (context, index) {
+                                final produk =
+                                    kelompokProduk.value[index];
+
+                                final jumlah =
+                                    jumlahProduk(produk);
+
+                                return Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: brown,
+                                    borderRadius:
+                                        BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(
+                                        0xFF6B4936,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // FOTO PRODUK
+                                      SizedBox(
+                                        width: double.infinity,
+                                        height: 165,
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(9),
+                                          child: Container(
+                                            color: brown,
+                                            child: tampilkanGambar(
+                                              produk,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 8),
+
+                                      // NAMA PRODUK
+                                      Text(
+                                        produk.nama,
+                                        maxLines: 1,
+                                        overflow:
+                                            TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight:
+                                              FontWeight.bold,
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 3),
+
+                                      // HARGA PRODUK
+                                      Text(
+                                        rupiah(produk.harga),
+                                        style: const TextStyle(
+                                          color: Color(0xFFFFD783),
+                                          fontSize: 10,
+                                          fontWeight:
+                                              FontWeight.w600,
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 6),
+
+                                      // TOMBOL PILIH
+                                      SizedBox(
+                                        width: double.infinity,
+                                        height: 29,
+                                        child: FilledButton(
+                                          onPressed: () {
+                                            ubahPilihan(
+                                              produk,
+                                              1,
+                                            );
+                                          },
+                                          style:
+                                              FilledButton.styleFrom(
+                                            backgroundColor: cream,
+                                            foregroundColor: brown,
+                                            padding: EdgeInsets.zero,
+                                            shape:
+                                                RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius
+                                                      .circular(9),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            jumlah > 0
+                                                ? '+ Pilih ($jumlah)'
+                                                : '+ Pilih',
+                                            style:
+                                                const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight:
+                                                  FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+
+                            const SizedBox(height: 8),
+                          ],
+                        );
+                      }),
+                    ],
+                  );
+                },
               ),
             ),
 
+            // ==================================================
             // BAR RINGKASAN PRODUK
+            // ==================================================
+
             Container(
               color: const Color(0xFFFAF8F2),
               padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
@@ -467,7 +729,8 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
                       children: [
                         Text(
                           '$jumlahJenis Jenis Produk',
@@ -500,36 +763,11 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
                       backgroundColor: teal,
                       foregroundColor: Colors.white,
                     ),
-                    icon: const Icon(Icons.check, size: 16),
+                    icon: const Icon(
+                      Icons.check,
+                      size: 16,
+                    ),
                     label: const Text('Selesai'),
-                  ),
-                ],
-              ),
-            ),
-
-            // NAVIGASI BAWAH SESUAI FIGMA
-            Container(
-              color: const Color(0xFFFAF8F2),
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  BottomItem(
-                    icon: Icons.receipt_long,
-                    label: 'Pesanan',
-                    aktif: true,
-                  ),
-                  BottomItem(
-                    icon: Icons.history,
-                    label: 'Riwayat',
-                  ),
-                  BottomItem(
-                    icon: Icons.inventory_2_outlined,
-                    label: 'Stok Bahan',
-                  ),
-                  BottomItem(
-                    icon: Icons.person_outline,
-                    label: 'Profil',
                   ),
                 ],
               ),
@@ -540,8 +778,3 @@ class _ProductPickerScreenState extends State<ProductPickerScreen> {
     );
   }
 }
-
-// ============================================================
-// KOMPONEN NAVIGASI BAWAH
-// ============================================================
-

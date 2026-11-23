@@ -1,10 +1,14 @@
-import 'package:flutter/material.dart';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../services/pemesanan_service.dart';
 import '../widgets/shared.dart';
 import 'chatbot_screen.dart';
 import 'pilih_produk_screen.dart';
 import 'qris_payment_screen.dart';
 import 'pembayaran_berhasil_screen.dart';
+import 'riwayat_pemesanan_screen.dart';
 
 class PesananScreen extends StatefulWidget {
   const PesananScreen({super.key});
@@ -20,24 +24,9 @@ class _PesananScreenState extends State<PesananScreen> {
   String metodeBayar = 'Tunai (Cash)';
   String statusPesanan = 'Belum Dibayar';
 
-  int uangDiterima = 60500;
+  bool sedangMenyimpan = false;
 
-  List<Produk> keranjang = [
-    Produk(
-      nama: 'Chocolate Cake',
-      kategori: 'Pastry & Camilan',
-      harga: 25000,
-      ikon: Icons.cake_outlined,
-      jumlah: 1,
-    ),
-    Produk(
-      nama: 'Brown Sugar Latte',
-      kategori: 'Kopi Base',
-      harga: 15000,
-      ikon: Icons.local_cafe_outlined,
-      jumlah: 2,
-    ),
-  ];
+  List<Produk> keranjang = [];
 
   int get subtotal {
     return keranjang.fold(
@@ -46,7 +35,6 @@ class _PesananScreenState extends State<PesananScreen> {
     );
   }
 
-  // Pajak contoh 10%. Sesuaikan dengan aturan outlet.
   int get pajak => (subtotal * 0.10).round();
 
   int get total => subtotal + pajak;
@@ -60,11 +48,9 @@ class _PesananScreenState extends State<PesananScreen> {
     );
   }
 
-  int get kembalian {
-    if (metodeBayar != 'Tunai (Cash)') return 0;
-    if (uangDiterima < total) return 0;
-    return uangDiterima - total;
-  }
+  // ==========================================
+  // FORMAT RUPIAH
+  // ==========================================
 
   String rupiah(int nilai) {
     final angka = nilai.toString();
@@ -83,6 +69,10 @@ class _PesananScreenState extends State<PesananScreen> {
     return 'Rp $hasil';
   }
 
+  // ==========================================
+  // BUKA HALAMAN PILIH PRODUK
+  // ==========================================
+
   Future<void> bukaPilihProduk() async {
     final hasil = await Navigator.push<List<Produk>>(
       context,
@@ -97,12 +87,50 @@ class _PesananScreenState extends State<PesananScreen> {
 
     setState(() {
       keranjang = hasil.map((produk) => produk.salin()).toList();
-
-      if (uangDiterima < total) {
-        uangDiterima = total;
-      }
     });
   }
+
+  // ==========================================
+  // BUKA CHATBOT AI
+  // ==========================================
+
+  Future<void> bukaChatbot() async {
+    final hasil = await Navigator.push<List<Produk>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ChatbotScreen(),
+      ),
+    );
+
+    if (hasil == null || hasil.isEmpty || !mounted) return;
+
+    setState(() {
+      for (final produkBaru in hasil) {
+        final index = keranjang.indexWhere(
+          (item) => item.id == produkBaru.id,
+        );
+
+        if (index == -1) {
+          keranjang.add(produkBaru.salin());
+        } else {
+          keranjang[index].jumlah += produkBaru.jumlah;
+        }
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Rekomendasi berhasil ditambahkan ke pesanan.',
+        ),
+        backgroundColor: darkTeal,
+      ),
+    );
+  }
+
+  // ==========================================
+  // UBAH JUMLAH PRODUK
+  // ==========================================
 
   void ubahJumlah(Produk produk, int perubahan) {
     setState(() {
@@ -111,99 +139,336 @@ class _PesananScreenState extends State<PesananScreen> {
       if (produk.jumlah <= 0) {
         keranjang.remove(produk);
       }
-
-      if (uangDiterima < total) {
-        uangDiterima = total;
-      }
     });
   }
 
-  void konfirmasiPesanan() {
-    if (keranjang.isEmpty) {
+  // ==========================================
+  // BUKA RIWAYAT PESANAN BERDASARKAN NOMOR HP
+  // ==========================================
+
+  void bukaRiwayatPemesanan() {
+    final nomorHp = kontakController.text.replaceAll(
+      RegExp(r'[^0-9]'),
+      '',
+    );
+
+    if (!RegExp(r'^[0-9]{10,15}$').hasMatch(nomorHp)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Silakan tambahkan produk terlebih dahulu.')),
+        const SnackBar(
+          content: Text(
+            'Masukkan nomor HP yang valid terlebih dahulu.',
+          ),
+        ),
       );
       return;
     }
 
-    final kodePesanan = 'INV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-    if (metodeBayar == 'QRIS Dinamis') {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => QrisPaymentScreen(
-        kodePesanan: kodePesanan,
-        total: total,
-        rupiah: rupiah,
-      ),
-    ),
-  );
-  return;
-}
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: Colors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: const Color(0xFFF6F0E5), borderRadius: BorderRadius.circular(13)),
-                child: const Icon(Icons.check_rounded, color: darkTeal, size: 28),
-              ),
-              const SizedBox(height: 12),
-              const Text('Pesanan Berhasil Dibuat', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: brown)),
-              const SizedBox(height: 3),
-              const Text('(Pembayaran Tunai / Cash)', style: TextStyle(fontSize: 11, color: darkTeal, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 15),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: const Color(0xFFFCFBF9), border: Border.all(color: borderColor), borderRadius: BorderRadius.circular(12)),
-                child: const Text('Tunjukkan kode pesanan ini kepada petugas saat melakukan pembayaran tunai.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.black54, height: 1.5)),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-                decoration: BoxDecoration(color: const Color(0xFFFCFBF9), border: Border.all(color: borderColor), borderRadius: BorderRadius.circular(12)),
-                child: Column(children: [
-                  const Text('KODE PESANAN', style: TextStyle(fontSize: 9, color: Colors.black45, letterSpacing: .5)),
-                  const SizedBox(height: 4),
-                  Text('#$kodePesanan', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: brown)),
-                ]),
-              ),
-              const SizedBox(height: 12),
-              Row(children: [const Expanded(child: Text('Total Tagihan', style: TextStyle(fontSize: 11, color: Colors.black54))), Text(rupiah(total), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: brown))]),
-              const SizedBox(height: 14),
-              SizedBox(width: double.infinity, height: 44, child: FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: darkTeal, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11))),
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => CashOrderConfirmationScreen(
-                    kodePesanan: kodePesanan,
-                    total: total,
-                    uangDiterima: uangDiterima,
-                    kembalian: kembalian,
-                    rupiah: rupiah,
-                  )));
-                },
-                child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
-              )),
-            ],
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RiwayatPemesananScreen(
+          nomorHp: nomorHp,
         ),
       ),
     );
   }
+
+  // ==========================================
+  // KONFIRMASI PESANAN DAN KIRIM KE BACKEND
+  // ==========================================
+
+  Future<void> konfirmasiPesanan() async {
+    if (sedangMenyimpan) return;
+
+    if (keranjang.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Silakan pilih produk terlebih dahulu.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (namaController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nama pelanggan wajib diisi.'),
+        ),
+      );
+      return;
+    }
+
+    final nomorHp = kontakController.text.replaceAll(
+      RegExp(r'[^0-9]'),
+      '',
+    );
+
+    if (!RegExp(r'^[0-9]{10,15}$').hasMatch(nomorHp)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Nomor HP harus terdiri dari 10-15 angka.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    for (final produk in keranjang) {
+      if (produk.id == null || produk.id! <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'ID produk ${produk.nama} tidak ditemukan. '
+              'Silakan pilih ulang produk.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    setState(() {
+      sedangMenyimpan = true;
+    });
+
+    try {
+      final items = keranjang.map((produk) {
+        return {
+          'menu_id': produk.id,
+          'jumlah': produk.jumlah,
+        };
+      }).toList();
+
+      final hasil = await PemesananService.simpanPemesanan(
+        namaPelanggan: namaController.text.trim(),
+        nomorHp: nomorHp,
+        metodePembayaran: metodeBayar,
+        items: items,
+      );
+
+      if (!mounted) return;
+
+      final kodePesanan = hasil['kode_transaksi'].toString();
+
+      final totalBackend =
+          num.tryParse('${hasil['total_harga']}')?.round() ?? total;
+
+      setState(() {
+        statusPesanan = 'Menunggu Pembayaran';
+      });
+
+      // ==========================================
+      // PEMBAYARAN QRIS
+      // ==========================================
+
+      if (metodeBayar == 'QRIS Dinamis') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => QrisPaymentScreen(
+              kodePesanan: kodePesanan,
+              total: totalBackend,
+              rupiah: rupiah,
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      // ==========================================
+      // PEMBAYARAN TUNAI
+      // ==========================================
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF6F0E5),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: darkTeal,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Pesanan Berhasil Dibuat',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: brown,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  '(Pembayaran Tunai / Cash)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: darkTeal,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFCFBF9),
+                    border: Border.all(color: borderColor),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Pesanan sudah tersimpan di database. '
+                    'Silakan tunjukkan kode pesanan ini kepada '
+                    'petugas dan lakukan pembayaran langsung '
+                    'di kasir.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.black54,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 13,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFCFBF9),
+                    border: Border.all(color: borderColor),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'KODE PESANAN',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.black45,
+                          letterSpacing: .5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '#$kodePesanan',
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.bold,
+                          color: brown,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Total Tagihan',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      rupiah(totalBackend),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: brown,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: darkTeal,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CashOrderConfirmationScreen(
+                            kodePesanan: kodePesanan,
+                            total: totalBackend,
+                            rupiah: rupiah,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'OK',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menyimpan pesanan: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          sedangMenyimpan = false;
+        });
+      }
+    }
+  }
+
+  // ==========================================
+  // DISPOSE
+  // ==========================================
 
   @override
   void dispose() {
@@ -211,6 +476,10 @@ class _PesananScreenState extends State<PesananScreen> {
     kontakController.dispose();
     super.dispose();
   }
+
+  // ==========================================
+  // TAMPILAN HALAMAN PESANAN
+  // ==========================================
 
   @override
   Widget build(BuildContext context) {
@@ -229,7 +498,7 @@ class _PesananScreenState extends State<PesananScreen> {
                     height: 38,
                     width: 38,
                     decoration: BoxDecoration(
-                      color: teal.withValues(alpha:0.12),
+                      color: teal.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(11),
                     ),
                     child: const Icon(
@@ -312,14 +581,30 @@ class _PesananScreenState extends State<PesananScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        const FieldLabel('Loyalty ID / No. HP'),
+                        const FieldLabel('Nomor HP'),
                         const SizedBox(height: 5),
                         Row(
                           children: [
                             Expanded(
                               child: TextField(
                                 controller: kontakController,
-                                keyboardType: TextInputType.phone,
+
+                                // HANYA BOLEH MEMASUKKAN ANGKA
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(15),
+                                ],
+                                maxLength: 15,
+                                buildCounter: (
+                                  context, {
+                                  required currentLength,
+                                  required isFocused,
+                                  maxLength,
+                                }) {
+                                  return null;
+                                },
+
                                 decoration: inputDecoration(
                                   '081234567890',
                                 ),
@@ -330,23 +615,23 @@ class _PesananScreenState extends State<PesananScreen> {
                               height: 42,
                               width: 42,
                               child: FilledButton(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Pencarian pelanggan belum terhubung.',
-                                      ),
-                                    ),
-                                  );
-                                },
+                                onPressed: bukaRiwayatPemesanan,
                                 style: FilledButton.styleFrom(
                                   backgroundColor: teal,
                                   padding: EdgeInsets.zero,
                                 ),
-                                child: const Icon(Icons.add),
+                                child: const Icon(Icons.history),
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Masukkan nomor HP lalu tekan ikon riwayat untuk melihat pesanan sebelumnya.',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.black54,
+                          ),
                         ),
                       ],
                     ),
@@ -408,7 +693,9 @@ class _PesananScreenState extends State<PesananScreen> {
                         if (keranjang.isEmpty)
                           const Padding(
                             padding: EdgeInsets.all(16),
-                            child: Text('Belum ada produk dipilih.'),
+                            child: Text(
+                              'Belum ada produk dipilih.',
+                            ),
                           ),
                         ...keranjang.map(
                           (produk) => Padding(
@@ -585,37 +872,41 @@ class _PesananScreenState extends State<PesananScreen> {
                             ),
                           ],
                         ),
+
                         if (metodeBayar == 'Tunai (Cash)') ...[
-                          const SizedBox(height: 16),
-                          const FieldLabel('Uang Diterima'),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: {total, 70000, 100000}.map(
-                              (nominal) {
-                                return ChoiceChip(
-                                  label: Text(
-                                    rupiah(nominal),
-                                    style: const TextStyle(fontSize: 10),
-                                  ),
-                                  selected: uangDiterima == nominal,
-                                  onSelected: (_) {
-                                    setState(() {
-                                      uangDiterima = nominal;
-                                    });
-                                  },
-                                  selectedColor: teal.withValues(alpha:0.2),
-                                );
-                              },
-                            ).toList(),
-                          ),
                           const SizedBox(height: 12),
-                          priceRow('Total Belanja', rupiah(total)),
-                          const SizedBox(height: 7),
-                          priceRow('Uang Diterima', rupiah(uangDiterima)),
-                          const SizedBox(height: 7),
-                          priceRow('Uang Kembalian', rupiah(kembalian)),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8F4EB),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFFE8DDC8),
+                              ),
+                            ),
+                            child: const Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.payments_outlined,
+                                  color: Color(0xFF9B7938),
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Pembayaran tunai dilakukan langsung kepada petugas kasir setelah pesanan dibuat.',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.black54,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ] else ...[
                           const SizedBox(height: 12),
                           const Text(
@@ -626,11 +917,13 @@ class _PesananScreenState extends State<PesananScreen> {
                             ),
                           ),
                         ],
+
                         const SizedBox(height: 18),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed: konfirmasiPesanan,
+                            onPressed:
+                                sedangMenyimpan ? null : konfirmasiPesanan,
                             style: FilledButton.styleFrom(
                               backgroundColor: darkTeal,
                               foregroundColor: Colors.white,
@@ -641,9 +934,20 @@ class _PesananScreenState extends State<PesananScreen> {
                                 borderRadius: BorderRadius.circular(11),
                               ),
                             ),
-                            icon: const Icon(Icons.check_circle_outline),
+                            icon: sedangMenyimpan
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.check_circle_outline),
                             label: Text(
-                              'Konfirmasi Pembayaran (${rupiah(total)})',
+                              sedangMenyimpan
+                                  ? 'Menyimpan Pesanan...'
+                                  : 'Konfirmasi Pesanan (${rupiah(total)})',
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 fontSize: 11,
@@ -661,8 +965,11 @@ class _PesananScreenState extends State<PesananScreen> {
           ],
         ),
       ),
-      // Tombol AI chatbot mengambang di kanan bawah halaman Pesanan.
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+
+      // TOMBOL CHATBOT
+      floatingActionButtonLocation:
+          FloatingActionButtonLocation.endFloat,
+
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Column(
@@ -670,10 +977,7 @@ class _PesananScreenState extends State<PesananScreen> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ChatbotScreen()),
-              ),
+              onTap: bukaChatbot,
               borderRadius: BorderRadius.circular(20),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -694,11 +998,18 @@ class _PesananScreenState extends State<PesananScreen> {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.circle, size: 7, color: Color(0xFF20C997)),
+                    Icon(
+                      Icons.circle,
+                      size: 7,
+                      color: Color(0xFF20C997),
+                    ),
                     SizedBox(width: 6),
                     Text(
                       'Tanya AI Kasir',
-                      style: TextStyle(color: Colors.white, fontSize: 11),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -706,10 +1017,7 @@ class _PesananScreenState extends State<PesananScreen> {
             ),
             const SizedBox(height: 8),
             InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ChatbotScreen()),
-              ),
+              onTap: bukaChatbot,
               borderRadius: BorderRadius.circular(17),
               child: Container(
                 width: 58,
@@ -717,10 +1025,13 @@ class _PesananScreenState extends State<PesananScreen> {
                 decoration: BoxDecoration(
                   color: darkTeal,
                   borderRadius: BorderRadius.circular(17),
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 2,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: darkTeal.withValues(alpha:0.3),
+                      color: darkTeal.withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 5),
                     ),
@@ -739,6 +1050,10 @@ class _PesananScreenState extends State<PesananScreen> {
     );
   }
 
+  // ==========================================
+  // PILIHAN METODE PEMBAYARAN
+  // ==========================================
+
   Widget paymentOption({
     required String title,
     required IconData icon,
@@ -749,10 +1064,6 @@ class _PesananScreenState extends State<PesananScreen> {
       onTap: () {
         setState(() {
           metodeBayar = title;
-
-          if (metodeBayar == 'Tunai (Cash)' && uangDiterima < total) {
-            uangDiterima = total;
-          }
         });
       },
       borderRadius: BorderRadius.circular(10),
@@ -762,7 +1073,7 @@ class _PesananScreenState extends State<PesananScreen> {
           vertical: 13,
         ),
         decoration: BoxDecoration(
-          color: aktif ? teal.withValues(alpha:0.1) : Colors.white,
+          color: aktif ? teal.withValues(alpha: 0.1) : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: aktif ? teal : borderColor,
@@ -772,7 +1083,11 @@ class _PesananScreenState extends State<PesananScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: darkTeal),
+            Icon(
+              icon,
+              size: 18,
+              color: darkTeal,
+            ),
             const SizedBox(width: 5),
             Flexible(
               child: Text(
@@ -787,9 +1102,3 @@ class _PesananScreenState extends State<PesananScreen> {
     );
   }
 }
-
-
-// ============================================================
-// HALAMAN 3: RED ASSISTANT AI / CHATBOT
-// ============================================================
-

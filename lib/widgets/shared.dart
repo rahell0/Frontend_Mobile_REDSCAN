@@ -1,4 +1,9 @@
+
 import 'package:flutter/material.dart';
+
+// ============================================================
+// WARNA UTAMA REDSCAN
+// ============================================================
 
 const Color brown = Color(0xFF402719);
 const Color darkBrown = Color(0xFF2F1D13);
@@ -13,31 +18,53 @@ const Color borderColor = Color(0xFFE6E1DA);
 // ============================================================
 
 class Produk {
+  final int? id;
   final String nama;
   final String kategori;
   final int harga;
   final IconData ikon;
+
+  // ALAMAT GAMBAR DARI BACKEND
+  final String? gambar;
+
+  // JUMLAH PRODUK
   int jumlah;
 
   Produk({
+    this.id,
     required this.nama,
     required this.kategori,
     required this.harga,
     this.ikon = Icons.local_cafe_outlined,
+    this.gambar,
     this.jumlah = 1,
   });
 
-  Produk salin({int? jumlahBaru}) {
+  // ==========================================================
+  // MENYALIN DATA PRODUK
+  // ==========================================================
+
+  Produk salin({
+    int? jumlahBaru,
+  }) {
     return Produk(
+      id: id,
       nama: nama,
       kategori: kategori,
       harga: harga,
       ikon: ikon,
+
+      // GAMBAR TETAP IKUT DISALIN
+      gambar: gambar,
+
       jumlah: jumlahBaru ?? jumlah,
     );
   }
 }
 
+// ============================================================
+// BOTTOM NAVIGATION ITEM
+// ============================================================
 
 class BottomItem extends StatelessWidget {
   final IconData icon;
@@ -53,19 +80,25 @@ class BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color warna = aktif ? darkTeal : const Color(0xFF806E5F);
+    final Color warna =
+        aktif ? darkTeal : const Color(0xFF806E5F);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 19, color: warna),
+        Icon(
+          icon,
+          size: 19,
+          color: warna,
+        ),
         const SizedBox(height: 3),
         Text(
           label,
           style: TextStyle(
             fontSize: 9,
             color: warna,
-            fontWeight: aktif ? FontWeight.bold : FontWeight.normal,
+            fontWeight:
+                aktif ? FontWeight.bold : FontWeight.normal,
           ),
         ),
       ],
@@ -99,14 +132,20 @@ class SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
+        border: Border.all(
+          color: borderColor,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: darkTeal, size: 18),
+              Icon(
+                icon,
+                color: darkTeal,
+                size: 18,
+              ),
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
@@ -138,10 +177,17 @@ class SectionCard extends StatelessWidget {
   }
 }
 
+// ============================================================
+// LABEL FORM
+// ============================================================
+
 class FieldLabel extends StatelessWidget {
   final String text;
 
-  const FieldLabel(this.text, {super.key});
+  const FieldLabel(
+    this.text, {
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -156,7 +202,7 @@ class FieldLabel extends StatelessWidget {
 }
 
 // ============================================================
-// KOMPONEN INPUT DAN TOMBOL
+// KOMPONEN INPUT
 // ============================================================
 
 InputDecoration inputDecoration(String hint) {
@@ -174,11 +220,15 @@ InputDecoration inputDecoration(String hint) {
     ),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: borderColor),
+      borderSide: const BorderSide(
+        color: borderColor,
+      ),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: borderColor),
+      borderSide: const BorderSide(
+        color: borderColor,
+      ),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
@@ -189,6 +239,10 @@ InputDecoration inputDecoration(String hint) {
     ),
   );
 }
+
+// ============================================================
+// TOMBOL JUMLAH PRODUK
+// ============================================================
 
 Widget quantityButton({
   required IconData icon,
@@ -203,17 +257,29 @@ Widget quantityButton({
       style: IconButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: darkTeal,
-        side: const BorderSide(color: borderColor),
+        side: const BorderSide(
+          color: borderColor,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
       ),
-      icon: Icon(icon, size: 16),
+      icon: Icon(
+        icon,
+        size: 16,
+      ),
     ),
   );
 }
 
-Widget priceRow(String label, String value) {
+// ============================================================
+// BARIS HARGA
+// ============================================================
+
+Widget priceRow(
+  String label,
+  String value,
+) {
   return Row(
     children: [
       Expanded(
